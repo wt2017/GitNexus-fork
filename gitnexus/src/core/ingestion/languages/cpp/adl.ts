@@ -186,32 +186,7 @@ export function pickCppAdlCandidates(
   // Collect associated namespace QNames from every participating class-typed arg.
   const associatedNamespaces = new Set<string>();
   for (const arg of args) {
-    if (arg.simpleClassName !== '') {
-      // For template args this may be the template name itself (e.g.
-      // `vector`); simple-name lookup can match project classes with the
-      // same name (known V1/V2 simplification).
-      const classDef = findCppClassDefBySimpleName(arg.simpleClassName, scopes);
-      if (classDef !== undefined) {
-        const nsQName = classToNamespaceQualifiedName.get(classDef.nodeId);
-        if (nsQName !== undefined) associatedNamespaces.add(nsQName);
-      }
-    }
-
-    // Includes template-owner namespaces (e.g. `std` in std::vector<T>).
-    // If that surfaces extra candidates, ADL_AMBIGUOUS suppression below
-    // prevents arbitrary edge emission.
-    if (arg.templateNamespace.length > 0) associatedNamespaces.add(arg.templateNamespace);
-
-    for (const ns of arg.templateArgNamespaces) {
-      if (ns.length > 0) associatedNamespaces.add(ns);
-    }
-    for (const className of arg.templateArgClassNames) {
-      if (className.length === 0) continue;
-      const classDef = findCppClassDefBySimpleName(className, scopes);
-      if (classDef === undefined) continue;
-      const nsQName = classToNamespaceQualifiedName.get(classDef.nodeId);
-      if (nsQName !== undefined) associatedNamespaces.add(nsQName);
-    }
+    collectAssociatedNamespacesForAdlArg(arg, scopes, associatedNamespaces);
   }
   if (associatedNamespaces.size === 0) return undefined;
 
@@ -258,6 +233,41 @@ export function pickCppAdlCandidates(
   // suppress rather than pick arbitrarily. Mirrors `pickImplicitThisOverload`'s
   // unique-survivor requirement (see `pick-implicit-this-overload.test.ts`).
   return ADL_AMBIGUOUS;
+}
+
+function collectAssociatedNamespacesForAdlArg(
+  arg: CppAdlArgInfo,
+  scopes: ScopeResolutionIndexes,
+  associatedNamespaces: Set<string>,
+): void {
+  // For template args this may be the template name itself (e.g. `vector`);
+  // simple-name lookup can match project classes with the same name (known
+  // V1/V2 simplification).
+  addAssociatedNamespaceForClassName(arg.simpleClassName, scopes, associatedNamespaces);
+
+  // Includes template-owner namespaces (e.g. `std` in std::vector<T>). If
+  // that surfaces extra candidates, ADL_AMBIGUOUS suppression below prevents
+  // arbitrary edge emission.
+  if (arg.templateNamespace.length > 0) associatedNamespaces.add(arg.templateNamespace);
+
+  for (const ns of arg.templateArgNamespaces) {
+    if (ns.length > 0) associatedNamespaces.add(ns);
+  }
+  for (const className of arg.templateArgClassNames) {
+    addAssociatedNamespaceForClassName(className, scopes, associatedNamespaces);
+  }
+}
+
+function addAssociatedNamespaceForClassName(
+  simpleClassName: string,
+  scopes: ScopeResolutionIndexes,
+  associatedNamespaces: Set<string>,
+): void {
+  if (simpleClassName.length === 0) return;
+  const classDef = findCppClassDefBySimpleName(simpleClassName, scopes);
+  if (classDef === undefined) return;
+  const nsQName = classToNamespaceQualifiedName.get(classDef.nodeId);
+  if (nsQName !== undefined) associatedNamespaces.add(nsQName);
 }
 
 /** Walk upward from a Class scope, finding the innermost enclosing
