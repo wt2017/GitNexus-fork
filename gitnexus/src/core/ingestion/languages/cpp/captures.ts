@@ -794,8 +794,9 @@ function lookupAdlIdentifierType(identNode: SyntaxNode): CppAdlArgInfo {
     // Unwrap declarator chain to find pointer/reference markers and the
     // variable name. `init_declarator > pointer_declarator > identifier`
     // means pointer-typed; repeated pointer wrappers still count as pointer
-    // typed; `init_declarator > reference_declarator > ...` means
-    // reference-typed; bare `init_declarator > identifier` is value.
+    // typed; `init_declarator > reference_declarator > ...` (or
+    // `rvalue_reference_declarator`) means reference-typed; bare
+    // `init_declarator > identifier` is value.
     // Function-pointer wrappers (`pointer_declarator > function_declarator`)
     // must not contribute ADL associated namespaces.
     let isPointer = false;
@@ -816,7 +817,7 @@ function lookupAdlIdentifierType(identNode: SyntaxNode): CppAdlArgInfo {
         inner = next;
         continue;
       }
-      if (inner.type === 'reference_declarator') {
+      if (inner.type === 'reference_declarator' || inner.type === 'rvalue_reference_declarator') {
         isReference = true;
         // reference_declarator has a single child (the inner declarator).
         let next: SyntaxNode | null = null;
