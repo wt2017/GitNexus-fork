@@ -246,14 +246,13 @@ async function upsertGitNexusSection(
       //       like `({target: "symbolName", direction: "upstream"})`
       //       when noStats is set
       // Passing projectName + stats explicitly makes the contract obvious.
+      // noStats controls template generation, not keep-section stat updates — the user opted into a stats line by keeping it.
       const newStatsInner = `${stats.nodes || 0} symbols, ${stats.edges || 0} relationships, ${stats.processes || 0} execution flows`;
       const statsLine = `Indexed as **${projectName}** (${newStatsInner})`;
 
-      // Match either canonical phrasing, anchored to line boundaries (`^`/`$`
-      // with `m` flag) so we cannot replace prose embedded mid-paragraph like
-      // "you'll see it Indexed as **Foo** (note: ...)". The trailing period
-      // / sentence text the generator emits is preserved by sitting outside
-      // the matched pattern.
+      // Match either canonical phrasing at line start (`^` with `m` flag) so we
+      // cannot replace prose embedded mid-paragraph. Deliberately no `$`: text
+      // after the closing `)` on the same line (e.g. ". MCP tools.") stays intact.
       const statsPattern = /^(?:Indexed as|indexed by GitNexus as) \*\*[^*]+\*\* \([^)]+\)/m;
 
       if (statsPattern.test(existingSection)) {

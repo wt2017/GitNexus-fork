@@ -156,6 +156,7 @@ Resources: gitnexus://repo/TestProject/context
     expect(result).toContain('999 symbols');
     expect(result).toContain('1234 relationships');
     expect(result).toContain('42 execution flows');
+    expect(result).toContain('. MCP tools.');
 
     // Custom layout should be preserved (not replaced with verbose template)
     expect(result).toContain('<!-- gitnexus:keep -->');
@@ -547,6 +548,8 @@ Indexed as **Idem** (1 symbols, 2 relationships, 3 execution flows). Custom.
   });
 
   it('CRLF file with keep marker: stats line updates without corrupting content (#1508 review F5)', async () => {
+    // upsertGitNexusSection writes with .trim() + '\n', so the saved file uses LF
+    // line endings throughout — CRLF in the seed input is not preserved.
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'gn-keep-crlf-'));
     try {
       const claudePath = path.join(dir, 'CLAUDE.md');
