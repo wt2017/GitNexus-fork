@@ -100,7 +100,7 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
     await adapter.initLbug(dbPath);
 
     expect(accessMock).toHaveBeenCalledWith(dbPath);
-    // unlink called for: .shadow sidecar, .wal.checkpoint sidecar, init lock release
+    // Unlink called for: .shadow sidecar, .wal.checkpoint sidecar, init lock release
     expect(unlinkMock).toHaveBeenCalledWith(`${dbPath}.shadow`);
     expect(unlinkMock).toHaveBeenCalledWith(`${dbPath}.wal.checkpoint`);
     expect(unlinkMock).toHaveBeenCalledWith(`${dbPath}.init.lock`);

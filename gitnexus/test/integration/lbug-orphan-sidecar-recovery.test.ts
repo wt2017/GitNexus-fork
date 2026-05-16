@@ -208,10 +208,12 @@ describe('init lock — single-process ownership contract', () => {
     const lockPath = `${dbPath}.init.lock`;
 
     try {
-      // Plant a lock file with a PID that doesn't exist (PID 1 is init/systemd,
-      // use a very high PID that is almost certainly not running)
-      const stalePid = 2_000_000_000;
-      await fs.writeFile(lockPath, JSON.stringify({ pid: stalePid, ts: Date.now() - 60_000 }));
+      // PID far above any realistic range — guaranteed not running on any OS.
+      const DEAD_PROCESS_PID = 2_000_000_000;
+      await fs.writeFile(
+        lockPath,
+        JSON.stringify({ pid: DEAD_PROCESS_PID, ts: Date.now() - 60_000 }),
+      );
 
       const adapter = await import('../../src/core/lbug/lbug-adapter.js');
 

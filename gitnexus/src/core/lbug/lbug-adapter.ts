@@ -259,12 +259,16 @@ const tryBreakStaleLock = async (lockPath: string): Promise<boolean> => {
     const content = await fs.readFile(lockPath, 'utf-8');
     const parsed = JSON.parse(content) as { pid?: number; ts?: number };
 
-    // If the owning process is still alive, the lock is valid — don't break.
+    // If the owning process is still alive AND the lock is not stale, don't break.
     if (typeof parsed.pid === 'number' && isProcessAlive(parsed.pid)) {
-      return false;
+      // Even a live process's lock can be stale if it's been held too long
+      // (e.g. the process is hung). Check the timestamp.
+      if (typeof parsed.ts === 'number' && Date.now() - parsed.ts < INIT_LOCK_STALE_MS) {
+        return false;
+      }
     }
 
-    // PID is gone — stale lock from a crashed process.
+    // PID is gone or lock exceeded INIT_LOCK_STALE_MS — reclaim it.
     await fs.unlink(lockPath);
     logger.warn(
       `GitNexus: removed stale init lock (pid=${parsed.pid ?? '?'}, age=${typeof parsed.ts === 'number' ? `${Date.now() - parsed.ts}ms` : '?'})`,
