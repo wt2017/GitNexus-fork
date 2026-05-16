@@ -198,6 +198,143 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
     await adapter.closeLbug();
   });
 
+  it('handles partial orphan sidecar state and removes only present sidecars', async () => {
+    vi.resetModules();
+
+    const dbPath = '/tmp/gitnexus-lbug-partial-sidecar/lbug';
+    const ENOENT_ERROR = Object.assign(
+      new Error(`ENOENT: no such file or directory, access '${dbPath}'`),
+      { code: 'ENOENT' as const },
+    );
+    const queryResult = { getAll: vi.fn(async () => []), close: vi.fn() };
+    const conn = {
+      query: vi.fn(async () => queryResult),
+      close: vi.fn(async () => {}),
+    };
+    const db = { close: vi.fn(async () => {}) };
+    const accessMock = vi.fn(async () => {
+      throw ENOENT_ERROR;
+    });
+    const unlinkMock = vi.fn(async (target: string) => {
+      if (target.endsWith('.shadow')) throw ENOENT_ERROR;
+    });
+
+    vi.doMock('fs/promises', () => ({
+      default: {
+        lstat: vi.fn(async () => {
+          throw ENOENT_ERROR;
+        }),
+        access: accessMock,
+        unlink: unlinkMock,
+        mkdir: vi.fn(async () => {}),
+      },
+    }));
+    vi.doMock('../../src/core/lbug/lbug-config.js', () => ({
+      openLbugConnection: vi.fn(async () => ({ db, conn })),
+      closeLbugConnection: vi.fn(async () => {}),
+      isDbBusyError: vi.fn((err: unknown) => String(err).toLowerCase().includes('lock')),
+      isOpenRetryExhausted: vi.fn(() => false),
+      waitForWindowsHandleRelease: vi.fn(async () => true),
+    }));
+    vi.doMock('../../src/core/lbug/extension-loader.js', () => ({
+      extensionManager: {
+        ensure: vi.fn(async () => true),
+        getCapabilities: vi.fn(() => []),
+        reset: vi.fn(),
+      },
+    }));
+    const warnMock = vi.fn();
+    vi.doMock('../../src/core/logger.js', () => ({
+      logger: {
+        warn: warnMock,
+        info: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+      },
+    }));
+
+    const adapter = await import('../../src/core/lbug/lbug-adapter.js');
+    await adapter.initLbug(dbPath);
+
+    expect(unlinkMock).toHaveBeenCalledWith(`${dbPath}.shadow`);
+    expect(unlinkMock).toHaveBeenCalledWith(`${dbPath}.wal.checkpoint`);
+    expect(warnMock).toHaveBeenCalledTimes(1);
+    expect(warnMock).toHaveBeenCalledWith(
+      'GitNexus: removed orphan sidecar lbug.wal.checkpoint (no main DB file present)',
+    );
+
+    await adapter.closeLbug();
+  });
+
+  it('continues initialization when orphan sidecar unlink fails', async () => {
+    vi.resetModules();
+
+    const dbPath = '/tmp/gitnexus-lbug-sidecar-unlink-fail/lbug';
+    const ENOENT_ERROR = Object.assign(
+      new Error(`ENOENT: no such file or directory, access '${dbPath}'`),
+      { code: 'ENOENT' as const },
+    );
+    const EPERM_ERROR = Object.assign(new Error('EPERM: operation not permitted'), {
+      code: 'EPERM' as const,
+    });
+    const queryResult = { getAll: vi.fn(async () => []), close: vi.fn() };
+    const conn = {
+      query: vi.fn(async () => queryResult),
+      close: vi.fn(async () => {}),
+    };
+    const db = { close: vi.fn(async () => {}) };
+    const accessMock = vi.fn(async () => {
+      throw ENOENT_ERROR;
+    });
+    const unlinkMock = vi.fn(async () => {
+      throw EPERM_ERROR;
+    });
+
+    vi.doMock('fs/promises', () => ({
+      default: {
+        lstat: vi.fn(async () => {
+          throw ENOENT_ERROR;
+        }),
+        access: accessMock,
+        unlink: unlinkMock,
+        mkdir: vi.fn(async () => {}),
+      },
+    }));
+    const openLbugConnectionMock = vi.fn(async () => ({ db, conn }));
+    vi.doMock('../../src/core/lbug/lbug-config.js', () => ({
+      openLbugConnection: openLbugConnectionMock,
+      closeLbugConnection: vi.fn(async () => {}),
+      isDbBusyError: vi.fn((err: unknown) => String(err).toLowerCase().includes('lock')),
+      isOpenRetryExhausted: vi.fn(() => false),
+      waitForWindowsHandleRelease: vi.fn(async () => true),
+    }));
+    vi.doMock('../../src/core/lbug/extension-loader.js', () => ({
+      extensionManager: {
+        ensure: vi.fn(async () => true),
+        getCapabilities: vi.fn(() => []),
+        reset: vi.fn(),
+      },
+    }));
+    const warnMock = vi.fn();
+    vi.doMock('../../src/core/logger.js', () => ({
+      logger: {
+        warn: warnMock,
+        info: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+      },
+    }));
+
+    const adapter = await import('../../src/core/lbug/lbug-adapter.js');
+    await adapter.initLbug(dbPath);
+
+    expect(unlinkMock).toHaveBeenCalledTimes(2);
+    expect(warnMock).not.toHaveBeenCalled();
+    expect(openLbugConnectionMock).toHaveBeenCalledWith(expect.anything(), dbPath);
+
+    await adapter.closeLbug();
+  });
+
   it('drains and closes CHECKPOINT result before closing connection and database handles', async () => {
     vi.resetModules();
 
