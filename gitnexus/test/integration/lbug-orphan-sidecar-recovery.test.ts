@@ -192,9 +192,7 @@ describe('init lock — single-process ownership contract', () => {
 
       // Second acquire should fail because the lock is held by this (alive) process.
       // The lock retry budget is small enough that this completes quickly.
-      await expect(adapter.acquireInitLock(dbPath)).rejects.toThrow(
-        /unable to acquire init lock/,
-      );
+      await expect(adapter.acquireInitLock(dbPath)).rejects.toThrow(/unable to acquire init lock/);
 
       await release1();
     } finally {
@@ -276,33 +274,30 @@ describe('init lock — single-process ownership contract', () => {
     },
   );
 
-  itLbugReopen(
-    'initLbug cleans up lock file even when DB open fails',
-    async () => {
-      const tmp = await createTempDir('gitnexus-lbug-orphan-');
-      // Use an invalid path that will cause LadybugDB to fail
-      const dbPath = path.join(tmp.dbPath, 'nonexistent-subdir', 'deep', 'lbug');
-      const lockPath = `${dbPath}.init.lock`;
+  itLbugReopen('initLbug cleans up lock file even when DB open fails', async () => {
+    const tmp = await createTempDir('gitnexus-lbug-orphan-');
+    // Use an invalid path that will cause LadybugDB to fail
+    const dbPath = path.join(tmp.dbPath, 'nonexistent-subdir', 'deep', 'lbug');
+    const lockPath = `${dbPath}.init.lock`;
 
+    try {
+      const adapter = await import('../../src/core/lbug/lbug-adapter.js');
+
+      // initLbug should fail (parent dir structure may cause issues), but
+      // we primarily care that the lock file is cleaned up even on failure.
+      // Use a try/catch since the DB open may or may not fail depending
+      // on how mkdir works.
       try {
-        const adapter = await import('../../src/core/lbug/lbug-adapter.js');
-
-        // initLbug should fail (parent dir structure may cause issues), but
-        // we primarily care that the lock file is cleaned up even on failure.
-        // Use a try/catch since the DB open may or may not fail depending
-        // on how mkdir works.
-        try {
-          await adapter.initLbug(dbPath);
-          await adapter.closeLbug();
-        } catch {
-          // Expected — DB open can fail for various reasons
-        }
-
-        // Lock file should always be released, even on failure
-        await expect(fs.access(lockPath)).rejects.toThrow();
-      } finally {
-        await tmp.cleanup();
+        await adapter.initLbug(dbPath);
+        await adapter.closeLbug();
+      } catch {
+        // Expected — DB open can fail for various reasons
       }
-    },
-  );
+
+      // Lock file should always be released, even on failure
+      await expect(fs.access(lockPath)).rejects.toThrow();
+    } finally {
+      await tmp.cleanup();
+    }
+  });
 });

@@ -303,7 +303,10 @@ export const acquireInitLock = async (dbPath: string): Promise<() => Promise<voi
 
   for (let attempt = 1; attempt <= INIT_LOCK_MAX_ATTEMPTS; attempt++) {
     try {
-      const handle = await fs.open(lockPath, fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY);
+      const handle = await fs.open(
+        lockPath,
+        fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY,
+      );
       await handle.writeFile(payload);
       await handle.close();
 

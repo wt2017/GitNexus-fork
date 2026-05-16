@@ -450,9 +450,7 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
     expect(warnMock.mock.calls[1]?.[0]).toContain(
       'GitNexus: failed to remove orphan sidecar lbug.wal.checkpoint (EPERM) while main DB file is missing; LadybugDB open may still fail:',
     );
-    expect(warnMock.mock.calls[2]?.[0]).toContain(
-      'GitNexus: failed to release init lock (EPERM)',
-    );
+    expect(warnMock.mock.calls[2]?.[0]).toContain('GitNexus: failed to release init lock (EPERM)');
     expect(openLbugConnectionMock).toHaveBeenCalledWith(expect.anything(), dbPath);
 
     await adapter.closeLbug();
