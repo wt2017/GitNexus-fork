@@ -201,6 +201,11 @@ export const isReadOnlyDbError = (err: unknown): boolean => {
   return /read-only database/i.test(msg);
 };
 
+const isMissingFileError = (err: unknown): boolean => {
+  const errno = err as NodeJS.ErrnoException;
+  return errno?.code === 'ENOENT' || (err instanceof Error && err.message.includes('ENOENT'));
+};
+
 const runWithSessionLock = async <T>(operation: () => Promise<T>): Promise<T> => {
   const previous = sessionLock;
   let release: (() => void) | null = null;
@@ -372,16 +377,18 @@ const doInitLbug = async (dbPath: string) => {
   // from an interrupted run can block fresh opens indefinitely.
   try {
     await fs.access(dbPath);
-  } catch {
-    const orphanSidecars = [`${dbPath}.shadow`, `${dbPath}.wal.checkpoint`];
-    for (const sidecar of orphanSidecars) {
-      try {
-        await fs.unlink(sidecar);
-        logger.warn(
-          `GitNexus: removed orphan sidecar ${path.basename(sidecar)} (no main DB file present)`,
-        );
-      } catch {
-        // Sidecar absent — nothing to clean.
+  } catch (err) {
+    if (isMissingFileError(err)) {
+      const orphanSidecars = [`${dbPath}.shadow`, `${dbPath}.wal.checkpoint`];
+      for (const sidecar of orphanSidecars) {
+        try {
+          await fs.unlink(sidecar);
+          logger.warn(
+            `GitNexus: removed orphan sidecar ${path.basename(sidecar)} (no main DB file present)`,
+          );
+        } catch {
+          // Sidecar absent — nothing to clean.
+        }
       }
     }
   }
