@@ -2,10 +2,78 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 describe('lbug adapter CHECKPOINT lifecycle', () => {
   afterEach(() => {
+    vi.doUnmock('fs/promises');
     vi.doUnmock('../../src/core/lbug/lbug-config.js');
     vi.doUnmock('../../src/core/lbug/extension-loader.js');
+    vi.doUnmock('../../src/core/logger.js');
     vi.resetModules();
     vi.clearAllMocks();
+  });
+
+  it('removes orphan sidecars when main DB file is missing before opening LadybugDB', async () => {
+    vi.resetModules();
+
+    const dbPath = '/tmp/gitnexus-lbug-orphan-sidecar/lbug';
+    const queryResult = { getAll: vi.fn(async () => []), close: vi.fn() };
+    const conn = {
+      query: vi.fn(async () => queryResult),
+      close: vi.fn(async () => {}),
+    };
+    const db = { close: vi.fn(async () => {}) };
+
+    const unlinkMock = vi.fn(async (target: string) => {
+      if (target.endsWith('.shadow')) return;
+      throw new Error('ENOENT');
+    });
+    const accessMock = vi.fn(async () => {
+      throw new Error('ENOENT');
+    });
+
+    vi.doMock('fs/promises', () => ({
+      default: {
+        lstat: vi.fn(async () => {
+          throw new Error('ENOENT');
+        }),
+        access: accessMock,
+        unlink: unlinkMock,
+        mkdir: vi.fn(async () => {}),
+      },
+    }));
+    vi.doMock('../../src/core/lbug/lbug-config.js', () => ({
+      openLbugConnection: vi.fn(async () => ({ db, conn })),
+      closeLbugConnection: vi.fn(async () => {}),
+      isDbBusyError: vi.fn((err: unknown) => String(err).toLowerCase().includes('lock')),
+      isOpenRetryExhausted: vi.fn(() => false),
+      waitForWindowsHandleRelease: vi.fn(async () => true),
+    }));
+    vi.doMock('../../src/core/lbug/extension-loader.js', () => ({
+      extensionManager: {
+        ensure: vi.fn(async () => true),
+        getCapabilities: vi.fn(() => []),
+        reset: vi.fn(),
+      },
+    }));
+    const warnMock = vi.fn();
+    vi.doMock('../../src/core/logger.js', () => ({
+      logger: {
+        warn: warnMock,
+        info: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+      },
+    }));
+
+    const adapter = await import('../../src/core/lbug/lbug-adapter.js');
+    await adapter.initLbug(dbPath);
+
+    expect(accessMock).toHaveBeenCalledWith(dbPath);
+    expect(unlinkMock).toHaveBeenCalledWith(`${dbPath}.shadow`);
+    expect(unlinkMock).toHaveBeenCalledWith(`${dbPath}.wal.checkpoint`);
+    expect(warnMock).toHaveBeenCalledWith(
+      'GitNexus: removed orphan sidecar lbug.shadow (no main DB file present)',
+    );
+
+    await adapter.closeLbug();
   });
 
   it('drains and closes CHECKPOINT result before closing connection and database handles', async () => {

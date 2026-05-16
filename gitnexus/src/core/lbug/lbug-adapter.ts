@@ -368,6 +368,24 @@ const doInitLbug = async (dbPath: string) => {
     // Path doesn't exist, which is what LadybugDB wants for a new database
   }
 
+  // Crash-recovery cleanup: if the main DB file is missing, stale sidecars
+  // from an interrupted run can block fresh opens indefinitely.
+  try {
+    await fs.access(dbPath);
+  } catch {
+    const orphanSidecars = [`${dbPath}.shadow`, `${dbPath}.wal.checkpoint`];
+    for (const sidecar of orphanSidecars) {
+      try {
+        await fs.unlink(sidecar);
+        logger.warn(
+          `GitNexus: removed orphan sidecar ${path.basename(sidecar)} (no main DB file present)`,
+        );
+      } catch {
+        // Sidecar absent — nothing to clean.
+      }
+    }
+  }
+
   // Ensure parent directory exists
   const parentDir = path.dirname(dbPath);
   await fs.mkdir(parentDir, { recursive: true });
