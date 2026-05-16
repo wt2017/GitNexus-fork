@@ -379,6 +379,8 @@ const doInitLbug = async (dbPath: string) => {
     await fs.access(dbPath);
   } catch (err) {
     if (isMissingFileError(err)) {
+      // `.shadow` is documented by LadybugDB checkpointing and `.wal.checkpoint`
+      // was observed in the #1618 crash loop that motivated this recovery path.
       const orphanSidecars = [`${dbPath}.shadow`, `${dbPath}.wal.checkpoint`];
       for (const sidecar of orphanSidecars) {
         try {
