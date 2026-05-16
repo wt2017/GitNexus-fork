@@ -14,6 +14,7 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
     vi.resetModules();
 
     const dbPath = '/tmp/gitnexus-lbug-orphan-sidecar/lbug';
+    const ENOENT_ERROR = new Error('ENOENT');
     const queryResult = { getAll: vi.fn(async () => []), close: vi.fn() };
     const conn = {
       query: vi.fn(async () => queryResult),
@@ -21,18 +22,15 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
     };
     const db = { close: vi.fn(async () => {}) };
 
-    const unlinkMock = vi.fn(async (target: string) => {
-      if (target.endsWith('.shadow')) return;
-      throw new Error('ENOENT');
-    });
+    const unlinkMock = vi.fn(async () => {});
     const accessMock = vi.fn(async () => {
-      throw new Error('ENOENT');
+      throw ENOENT_ERROR;
     });
 
     vi.doMock('fs/promises', () => ({
       default: {
         lstat: vi.fn(async () => {
-          throw new Error('ENOENT');
+          throw ENOENT_ERROR;
         }),
         access: accessMock,
         unlink: unlinkMock,
@@ -69,8 +67,12 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
     expect(accessMock).toHaveBeenCalledWith(dbPath);
     expect(unlinkMock).toHaveBeenCalledWith(`${dbPath}.shadow`);
     expect(unlinkMock).toHaveBeenCalledWith(`${dbPath}.wal.checkpoint`);
+    expect(warnMock).toHaveBeenCalledTimes(2);
     expect(warnMock).toHaveBeenCalledWith(
       'GitNexus: removed orphan sidecar lbug.shadow (no main DB file present)',
+    );
+    expect(warnMock).toHaveBeenCalledWith(
+      'GitNexus: removed orphan sidecar lbug.wal.checkpoint (no main DB file present)',
     );
 
     await adapter.closeLbug();
