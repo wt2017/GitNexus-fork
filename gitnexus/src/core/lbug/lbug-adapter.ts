@@ -211,8 +211,10 @@ const extractErrnoCode = (err: unknown): string | undefined => {
   return errno?.code;
 };
 
+const MAX_LOGGED_ERROR_MESSAGE_LENGTH = 160;
+
 const summarizeError = (err: unknown): string =>
-  (err instanceof Error ? err.message : String(err)).slice(0, 160);
+  (err instanceof Error ? err.message : String(err)).slice(0, MAX_LOGGED_ERROR_MESSAGE_LENGTH);
 
 const runWithSessionLock = async <T>(operation: () => Promise<T>): Promise<T> => {
   const previous = sessionLock;

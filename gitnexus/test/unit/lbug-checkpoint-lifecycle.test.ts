@@ -212,21 +212,28 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
     await adapter.closeLbug();
   });
 
-  it('throws when db path lstat fails with non-ENOENT errors', async () => {
+  it.each([
+    {
+      code: 'EPERM',
+      message: 'operation not permitted',
+      dbPath: '/tmp/gitnexus-lbug-lstat-eperm/lbug',
+    },
+    {
+      code: 'EACCES',
+      message: 'permission denied',
+      dbPath: '/tmp/gitnexus-lbug-lstat-eacces/lbug',
+    },
+  ])('throws when db path lstat fails with non-ENOENT %s', async ({ code, message, dbPath }) => {
     vi.resetModules();
 
-    const dbPath = '/tmp/gitnexus-lbug-lstat-eperm/lbug';
-    const EPERM_ERROR = makeErrnoError(
-      'EPERM',
-      `EPERM: operation not permitted, lstat '${dbPath}'`,
-    );
+    const LSTAT_ERROR = makeErrnoError(code, `${code}: ${message}, lstat '${dbPath}'`);
     const accessMock = vi.fn(async () => {});
     const unlinkMock = vi.fn(async () => {});
 
     vi.doMock('fs/promises', () => ({
       default: {
         lstat: vi.fn(async () => {
-          throw EPERM_ERROR;
+          throw LSTAT_ERROR;
         }),
         access: accessMock,
         unlink: unlinkMock,
@@ -259,7 +266,7 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
     }));
 
     const adapter = await import('../../src/core/lbug/lbug-adapter.js');
-    await expect(adapter.initLbug(dbPath)).rejects.toThrow(/operation not permitted/i);
+    await expect(adapter.initLbug(dbPath)).rejects.toThrow(new RegExp(message, 'i'));
     expect(accessMock).not.toHaveBeenCalled();
     expect(unlinkMock).not.toHaveBeenCalled();
   });
