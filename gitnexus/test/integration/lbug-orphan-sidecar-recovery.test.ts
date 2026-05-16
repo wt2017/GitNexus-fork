@@ -150,3 +150,157 @@ describe('orphan sidecar recovery — native integration', () => {
     },
   );
 });
+
+// ---------------------------------------------------------------------------
+// Init lock — cross-process ownership contract
+// ---------------------------------------------------------------------------
+
+describe('init lock — single-process ownership contract', () => {
+  itLbugReopen('acquireInitLock creates and releases lock file atomically', async () => {
+    const tmp = await createTempDir('gitnexus-lbug-orphan-');
+    const dbPath = path.join(tmp.dbPath, 'lbug');
+    const lockPath = `${dbPath}.init.lock`;
+
+    try {
+      const adapter = await import('../../src/core/lbug/lbug-adapter.js');
+      const release = await adapter.acquireInitLock(dbPath);
+
+      // Lock file should exist while held
+      const content = await fs.readFile(lockPath, 'utf-8');
+      const parsed = JSON.parse(content);
+      expect(parsed.pid).toBe(process.pid);
+      expect(typeof parsed.ts).toBe('number');
+
+      // Release the lock
+      await release();
+
+      // Lock file should be gone after release
+      await expect(fs.access(lockPath)).rejects.toThrow();
+    } finally {
+      await tmp.cleanup();
+    }
+  });
+
+  itLbugReopen('acquireInitLock blocks concurrent acquire from same process', async () => {
+    const tmp = await createTempDir('gitnexus-lbug-orphan-');
+    const dbPath = path.join(tmp.dbPath, 'lbug');
+
+    try {
+      const adapter = await import('../../src/core/lbug/lbug-adapter.js');
+
+      const release1 = await adapter.acquireInitLock(dbPath);
+
+      // Second acquire should fail because the lock is held by this (alive) process.
+      // The lock retry budget is small enough that this completes quickly.
+      await expect(adapter.acquireInitLock(dbPath)).rejects.toThrow(
+        /unable to acquire init lock/,
+      );
+
+      await release1();
+    } finally {
+      await tmp.cleanup();
+    }
+  });
+
+  itLbugReopen('acquireInitLock reclaims stale lock from dead process', async () => {
+    const tmp = await createTempDir('gitnexus-lbug-orphan-');
+    const dbPath = path.join(tmp.dbPath, 'lbug');
+    const lockPath = `${dbPath}.init.lock`;
+
+    try {
+      // Plant a lock file with a PID that doesn't exist (PID 1 is init/systemd,
+      // use a very high PID that is almost certainly not running)
+      const stalePid = 2_000_000_000;
+      await fs.writeFile(lockPath, JSON.stringify({ pid: stalePid, ts: Date.now() - 60_000 }));
+
+      const adapter = await import('../../src/core/lbug/lbug-adapter.js');
+
+      // Should break the stale lock and acquire successfully
+      const release = await adapter.acquireInitLock(dbPath);
+
+      // Verify we own the lock now
+      const content = await fs.readFile(lockPath, 'utf-8');
+      const parsed = JSON.parse(content);
+      expect(parsed.pid).toBe(process.pid);
+
+      await release();
+    } finally {
+      await tmp.cleanup();
+    }
+  });
+
+  itLbugReopen('release is idempotent — calling twice does not throw', async () => {
+    const tmp = await createTempDir('gitnexus-lbug-orphan-');
+    const dbPath = path.join(tmp.dbPath, 'lbug');
+
+    try {
+      const adapter = await import('../../src/core/lbug/lbug-adapter.js');
+      const release = await adapter.acquireInitLock(dbPath);
+
+      await release();
+      // Second release — lock file already gone, should not throw
+      await release();
+    } finally {
+      await tmp.cleanup();
+    }
+  });
+
+  itLbugReopen(
+    'initLbug cleans up lock file after successful init with orphan sidecars',
+    async () => {
+      const tmp = await createTempDir('gitnexus-lbug-orphan-');
+      const dbPath = path.join(tmp.dbPath, 'lbug');
+      const lockPath = `${dbPath}.init.lock`;
+
+      try {
+        // Plant orphan sidecars
+        await fs.writeFile(`${dbPath}.shadow`, 'stale-shadow');
+        await fs.writeFile(`${dbPath}.wal.checkpoint`, 'stale-wal');
+
+        const adapter = await import('../../src/core/lbug/lbug-adapter.js');
+        await adapter.initLbug(dbPath);
+
+        // Lock file should be released after init completes
+        await expect(fs.access(lockPath)).rejects.toThrow();
+
+        // DB should be functional
+        const rows = await adapter.executeQuery('RETURN 1 AS ok');
+        expect(rows).toEqual([{ ok: 1 }]);
+
+        await adapter.closeLbug();
+      } finally {
+        await tmp.cleanup();
+      }
+    },
+  );
+
+  itLbugReopen(
+    'initLbug cleans up lock file even when DB open fails',
+    async () => {
+      const tmp = await createTempDir('gitnexus-lbug-orphan-');
+      // Use an invalid path that will cause LadybugDB to fail
+      const dbPath = path.join(tmp.dbPath, 'nonexistent-subdir', 'deep', 'lbug');
+      const lockPath = `${dbPath}.init.lock`;
+
+      try {
+        const adapter = await import('../../src/core/lbug/lbug-adapter.js');
+
+        // initLbug should fail (parent dir structure may cause issues), but
+        // we primarily care that the lock file is cleaned up even on failure.
+        // Use a try/catch since the DB open may or may not fail depending
+        // on how mkdir works.
+        try {
+          await adapter.initLbug(dbPath);
+          await adapter.closeLbug();
+        } catch {
+          // Expected — DB open can fail for various reasons
+        }
+
+        // Lock file should always be released, even on failure
+        await expect(fs.access(lockPath)).rejects.toThrow();
+      } finally {
+        await tmp.cleanup();
+      }
+    },
+  );
+});

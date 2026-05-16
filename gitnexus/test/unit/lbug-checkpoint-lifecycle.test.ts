@@ -3,6 +3,34 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const makeErrnoError = <TCode extends string>(code: TCode, message: string) =>
   Object.assign(new Error(message), { code });
 
+/** Stub file handle returned by mocked `fs.open` for the init lock. */
+const makeOpenMock = () =>
+  vi.fn(async () => ({
+    writeFile: vi.fn(async () => {}),
+    close: vi.fn(async () => {}),
+  }));
+
+/** Standard `fs/promises` mock for tests that only need doInitLbug to succeed. */
+const mockFsForInit = (dbPath: string) => {
+  const ENOENT_ERROR = makeErrnoError(
+    'ENOENT',
+    `ENOENT: no such file or directory, lstat '${dbPath}'`,
+  );
+  vi.doMock('fs/promises', () => ({
+    default: {
+      lstat: vi.fn(async () => {
+        throw ENOENT_ERROR;
+      }),
+      access: vi.fn(async () => {
+        throw ENOENT_ERROR;
+      }),
+      unlink: vi.fn(async () => {}),
+      mkdir: vi.fn(async () => {}),
+      open: makeOpenMock(),
+    },
+  }));
+};
+
 describe('lbug adapter CHECKPOINT lifecycle', () => {
   afterEach(() => {
     vi.doUnmock('fs/promises');
@@ -41,6 +69,7 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
         access: accessMock,
         unlink: unlinkMock,
         mkdir: vi.fn(async () => {}),
+        open: makeOpenMock(),
       },
     }));
     vi.doMock('../../src/core/lbug/lbug-config.js', () => ({
@@ -71,8 +100,10 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
     await adapter.initLbug(dbPath);
 
     expect(accessMock).toHaveBeenCalledWith(dbPath);
+    // unlink called for: .shadow sidecar, .wal.checkpoint sidecar, init lock release
     expect(unlinkMock).toHaveBeenCalledWith(`${dbPath}.shadow`);
     expect(unlinkMock).toHaveBeenCalledWith(`${dbPath}.wal.checkpoint`);
+    expect(unlinkMock).toHaveBeenCalledWith(`${dbPath}.init.lock`);
     expect(warnMock).toHaveBeenCalledTimes(2);
     expect(warnMock).toHaveBeenCalledWith(
       'GitNexus: removed orphan sidecar lbug.shadow (no main DB file present)',
@@ -112,6 +143,7 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
         access: accessMock,
         unlink: unlinkMock,
         mkdir: vi.fn(async () => {}),
+        open: makeOpenMock(),
       },
     }));
     vi.doMock('../../src/core/lbug/lbug-config.js', () => ({
@@ -142,7 +174,9 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
     await adapter.initLbug(dbPath);
 
     expect(accessMock).toHaveBeenCalledWith(dbPath);
-    expect(unlinkMock).not.toHaveBeenCalled();
+    // Only the init lock release calls unlink — sidecar cleanup was skipped
+    expect(unlinkMock).toHaveBeenCalledTimes(1);
+    expect(unlinkMock).toHaveBeenCalledWith(`${dbPath}.init.lock`);
     expect(warnMock).toHaveBeenCalledTimes(1);
     expect(warnMock.mock.calls[0]?.[0]).toContain(
       'GitNexus: unable to verify main DB file before orphan sidecar cleanup (EACCES); skipping cleanup:',
@@ -176,6 +210,7 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
         access: accessMock,
         unlink: unlinkMock,
         mkdir: vi.fn(async () => {}),
+        open: makeOpenMock(),
       },
     }));
     vi.doMock('../../src/core/lbug/lbug-config.js', () => ({
@@ -206,7 +241,9 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
     await adapter.initLbug(dbPath);
 
     expect(accessMock).toHaveBeenCalledWith(dbPath);
-    expect(unlinkMock).not.toHaveBeenCalled();
+    // Only the init lock release calls unlink — no sidecar cleanup needed
+    expect(unlinkMock).toHaveBeenCalledTimes(1);
+    expect(unlinkMock).toHaveBeenCalledWith(`${dbPath}.init.lock`);
     expect(warnMock).not.toHaveBeenCalled();
 
     await adapter.closeLbug();
@@ -238,6 +275,7 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
         access: accessMock,
         unlink: unlinkMock,
         mkdir: vi.fn(async () => {}),
+        open: makeOpenMock(),
       },
     }));
     vi.doMock('../../src/core/lbug/lbug-config.js', () => ({
@@ -300,6 +338,7 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
         access: accessMock,
         unlink: unlinkMock,
         mkdir: vi.fn(async () => {}),
+        open: makeOpenMock(),
       },
     }));
     vi.doMock('../../src/core/lbug/lbug-config.js', () => ({
@@ -372,6 +411,7 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
         access: accessMock,
         unlink: unlinkMock,
         mkdir: vi.fn(async () => {}),
+        open: makeOpenMock(),
       },
     }));
     const openLbugConnectionMock = vi.fn(async () => ({ db, conn }));
@@ -402,13 +442,16 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
     const adapter = await import('../../src/core/lbug/lbug-adapter.js');
     await adapter.initLbug(dbPath);
 
-    expect(unlinkMock).toHaveBeenCalledTimes(2);
-    expect(warnMock).toHaveBeenCalledTimes(2);
+    expect(unlinkMock).toHaveBeenCalledTimes(3);
+    expect(warnMock).toHaveBeenCalledTimes(3);
     expect(warnMock.mock.calls[0]?.[0]).toContain(
       'GitNexus: failed to remove orphan sidecar lbug.shadow (EPERM) while main DB file is missing; LadybugDB open may still fail:',
     );
     expect(warnMock.mock.calls[1]?.[0]).toContain(
       'GitNexus: failed to remove orphan sidecar lbug.wal.checkpoint (EPERM) while main DB file is missing; LadybugDB open may still fail:',
+    );
+    expect(warnMock.mock.calls[2]?.[0]).toContain(
+      'GitNexus: failed to release init lock (EPERM)',
     );
     expect(openLbugConnectionMock).toHaveBeenCalledWith(expect.anything(), dbPath);
 
@@ -450,6 +493,7 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
       }),
     };
 
+    mockFsForInit('/tmp/gitnexus-lbug-checkpoint-lifecycle/lbug');
     vi.doMock('../../src/core/lbug/lbug-config.js', () => ({
       openLbugConnection: vi.fn(async () => ({ db, conn })),
       closeLbugConnection: vi.fn(async () => {}),
@@ -511,6 +555,7 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
       close: vi.fn(async () => {}),
     };
 
+    mockFsForInit('/tmp/gitnexus-lbug-query-lifecycle/lbug');
     vi.doMock('../../src/core/lbug/lbug-config.js', () => ({
       openLbugConnection: vi.fn(async () => ({ db, conn })),
       closeLbugConnection: vi.fn(async () => {}),
@@ -565,6 +610,7 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
       close: vi.fn(async () => {}),
     };
 
+    mockFsForInit('/tmp/gitnexus-lbug-sync-close-lifecycle/lbug');
     vi.doMock('../../src/core/lbug/lbug-config.js', () => ({
       openLbugConnection: vi.fn(async () => ({ db, conn })),
       closeLbugConnection: vi.fn(async () => {}),
@@ -630,6 +676,7 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
       close: vi.fn(async () => {}),
     };
 
+    mockFsForInit('/tmp/gitnexus-lbug-array-error-lifecycle/lbug');
     vi.doMock('../../src/core/lbug/lbug-config.js', () => ({
       openLbugConnection: vi.fn(async () => ({ db, conn })),
       closeLbugConnection: vi.fn(async () => {}),
@@ -710,6 +757,7 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
       close: vi.fn(async () => {}),
     };
 
+    mockFsForInit('/tmp/gitnexus-lbug-stream-lifecycle/lbug');
     vi.doMock('../../src/core/lbug/lbug-config.js', () => ({
       openLbugConnection: vi.fn(async () => ({ db, conn })),
       closeLbugConnection: vi.fn(async () => {}),
@@ -790,6 +838,7 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
       close: vi.fn(async () => {}),
     };
 
+    mockFsForInit('/tmp/gitnexus-lbug-stream-error-lifecycle/lbug');
     vi.doMock('../../src/core/lbug/lbug-config.js', () => ({
       openLbugConnection: vi.fn(async () => ({ db, conn })),
       closeLbugConnection: vi.fn(async () => {}),
