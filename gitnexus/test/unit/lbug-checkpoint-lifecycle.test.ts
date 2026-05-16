@@ -277,7 +277,7 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
     await adapter.closeLbug();
   });
 
-  it('continues initialization when orphan sidecar unlink fails', async () => {
+  it('proceeds to openLbugConnection when orphan sidecar unlink fails', async () => {
     vi.resetModules();
 
     const dbPath = '/tmp/gitnexus-lbug-sidecar-unlink-fail/lbug';
