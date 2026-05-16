@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GitNexus Local Deployment &amp; Claude Code Integration Guide</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --fg: #c9d1d9;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --accent-soft: #1f6feb;
+      --border: #30363d;
+      --code-bg: #161b22;
+      --success: #3fb950;
+      --warn: #d29922;
+      --danger: #f85149;
+      --radius: 8px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      line-height: 1.7;
+      font-size: 15px;
+    }
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 48px 24px;
+    }
+    h1, h2, h3, h4 {
+      font-weight: 600;
+      line-height: 1.3;
+      color: #f0f6fc;
+      margin-top: 2.2em;
+      margin-bottom: 0.6em;
+    }
+    h1 { font-size: 2.2rem; margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 16px; }
+    h2 { font-size: 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+    h3 { font-size: 1.2rem; color: var(--accent); }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code, pre {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 13.5px;
+    }
+    code {
+      background: var(--code-bg);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #e6edf3;
+    }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      overflow-x: auto;
+      line-height: 1.5;
+    }
+    pre code { background: none; padding: 0; }
+    .note, .warn, .danger {
+      border-left: 4px solid var(--accent);
+      background: rgba(88,166,255,0.08);
+      padding: 12px 16px;
+      border-radius: 0 var(--radius) var(--radius) 0;
+      margin: 16px 0;
+    }
+    .warn { border-left-color: var(--warn); background: rgba(210,153,34,0.08); }
+    .danger { border-left-color: var(--danger); background: rgba(248,81,73,0.08); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 14px;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      text-align: left;
+    }
+    th { background: var(--code-bg); font-weight: 600; }
+    tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+    ul, ol { padding-left: 22px; }
+    li { margin: 6px 0; }
+    .step {
+      counter-increment: step;
+      position: relative;
+      padding-left: 36px;
+      margin: 24px 0;
+    }
+    .step::before {
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      top: 2px;
+      width: 26px;
+      height: 26px;
+      background: var(--accent-soft);
+      color: #fff;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .toc {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      margin: 24px 0;
+    }
+    .toc ul { list-style: none; padding: 0; margin: 0; }
+    .toc li { margin: 4px 0; }
+    .toc a { color: var(--fg); }
+    .toc a:hover { color: var(--accent); }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-left: 6px;
+    }
+    .badge-required { background: rgba(248,81,73,0.2); color: var(--danger); }
+    .badge-optional { background: rgba(139,148,158,0.2); color: var(--muted); }
+  </style>
+</head>
+<body>
+<div class="container">
+
+<h1>GitNexus Local Deployment &amp; Claude Code Integration</h1>
+<p style="color:var(--muted);margin-top:-12px;">Last updated: 2026-05-16 &middot; Version: GitNexus 1.7.x</p>
+
+<div class="toc">
+  <strong>Table of Contents</strong>
+  <ul>
+    <li><a href="#overview">1. Architecture Overview</a></li>
+    <li><a href="#prereq">2. Prerequisites</a></li>
+    <li><a href="#install">3. Installation</a></li>
+    <li><a href="#index">4. Indexing Your First Repository</a></li>
+    <li><a href="#mcp">5. Claude Code MCP Configuration</a></li>
+    <li><a href="#skills">6. Installing Agent Skills</a></li>
+    <li><a href="#hooks">7. Optional: Claude Code Hooks</a></li>
+    <li><a href="#verify">8. Verification</a></li>
+    <li><a href="#usage">9. Daily Usage Workflow</a></li>
+    <li><a href="#docker">10. Docker Deployment (HTTP API)</a></li>
+    <li><a href="#troubleshoot">11. Troubleshooting</a></li>
+    <li><a href="#security">12. Security &amp; Privacy Notes</a></li>
+  </ul>
+</div>
+
+<h2 id="overview">1. Architecture Overview</h2>
+<p>GitNexus has three components that work together:</p>
+
+<table>
+  <tr><th>Component</th><th>Purpose</th><th>Runtime</th></tr>
+  <tr>
+    <td><strong>CLI / Indexer</strong></td>
+    <td>Parses source code, builds knowledge graph, stores in <code>.gitnexus/</code></td>
+    <td>Node.js, local shell</td>
+  </tr>
+  <tr>
+    <td><strong>MCP Server</strong> <span class="badge badge-required">REQUIRED</span></td>
+    <td>Exposes tools (<code>query</code>, <code>impact</code>, <code>context</code>, etc.) to Claude Code via stdio</td>
+    <td>stdio subprocess spawned by Claude Code</td>
+  </tr>
+  <tr>
+    <td><strong>HTTP API</strong> <span class="badge badge-optional">OPTIONAL</span></td>
+    <td>REST API on port 4747; used by Web UI and third-party clients</td>
+    <td><code>npx gitnexus serve</code> or Docker</td>
+  </tr>
+</table>
+
+<p>Data flow:</p>
+<pre><code>Your Code Repo
+    ├── src/...
+    └── .gitnexus/          &lt;-- index stored here (LadybugDB)
+
+Claude Code
+    └─spawn──&gt; npx gitnexus mcp
+                  └─reads──&gt; ~/.gitnexus/registry.json  &lt;-- global repo registry
+                  └─opens──&gt; &lt;repo&gt;/.gitnexus/lbug      &lt;-- per-repo graph DB</code></pre>
+
+<div class="note">
+  <strong>Key principle:</strong> The MCP server is <strong>stateless and read-only</strong> (for queries). Index creation is always done via the CLI. The MCP server discovers repos through the global registry.
+</div>
+
+<h2 id="prereq">2. Prerequisites</h2>
+<table>
+  <tr><th>Requirement</th><th>Version</th><th>Why</th></tr>
+  <tr><td>Node.js</td><td>18+ (22 recommended)</td><td>CLI runtime and native module builds</td></tr>
+  <tr><td>Git</td><td>2.30+</td><td>Commit diffing, staleness checks</td></tr>
+  <tr><td>python3</td><td>3.10+</td><td>Required for tree-sitter native grammar builds</td></tr>
+  <tr><td>make, g++</td><td>any</td><td>Required for tree-sitter-proto / tree-sitter-swift</td></tr>
+</table>
+
+<div class="note">
+  To skip optional grammar builds (faster install, no C++ toolchain needed):
+  <pre><code>export GITNEXUS_SKIP_OPTIONAL_GRAMMARS=1</code></pre>
+</div>
+
+<h2 id="install">3. Installation</h2>
+
+<h3>Option A: Global Install (Recommended)</h3>
+<pre><code>npm install -g gitnexus</code></pre>
+<p>This pins <code>gitnexus</code> to <code>PATH</code>, giving the fastest MCP startup (avoids cold <code>npx</code> cache delays).</p>
+
+<h3>Option B: Per-Project Install</h3>
+<pre><code>cd /path/to/your-project
+npm install --save-dev gitnexus</code></pre>
+
+<h3>Option C: npx (One-shot, slower startup)</h3>
+<pre><code>npx gitnexus@latest --help</code></pre>
+<div class="warn">
+  Using <code>npx</code> for MCP may trigger installs on cold cache. Claude Code&rsquo;s default MCP timeout is ~30s; if the install exceeds this, the MCP server fails to start. Global install avoids this.
+</div>
+
+<h3>Quick Setup (Auto-detect Editors)</h3>
+<pre><code>gitnexus setup</code></pre>
+<p>This auto-detects Claude Code, Cursor, Codex, and OpenCode; writes global MCP configs. You can still do it manually below.</p>
+
+<h2 id="index">4. Indexing Your First Repository</h2>
+
+<div class="step">Navigate to your project root and run the indexer.</div>
+<pre><code>cd /path/to/your-project
+gitnexus analyze</code></pre>
+
+<p>This performs a full 12-phase pipeline:</p>
+<ol>
+  <li><strong>Scan</strong> — file paths and sizes</li>
+  <li><strong>Structure</strong> — folder/file tree</li>
+  <li><strong>Parse</strong> — tree-sitter AST extraction (symbol nodes, CALLS/IMPORTS edges)</li>
+  <li><strong>Routes / Tools / ORM</strong> — framework-specific extraction</li>
+  <li><strong>Cross-file</strong> — type propagation in import order</li>
+  <li><strong>MRO</strong> — method override resolution</li>
+  <li><strong>Communities</strong> — Leiden algorithm clustering</li>
+  <li><strong>Processes</strong> — execution flow tracing</li>
+  <li><strong>Persist</strong> — load graph into LadybugDB</li>
+  <li><strong>FTS indexes</strong> — BM25 full-text search</li>
+  <li><strong>Embeddings</strong> — optional semantic vectors (local Snowflake model, no API calls)</li>
+  <li><strong>Context files</strong> — generate AGENTS.md / CLAUDE.md</li>
+</ol>
+
+<div class="note">
+  <strong>No LLM API calls during <code>analyze</code>.</strong> The entire pipeline is deterministic local computation. The only step that uses an external API is <code>gitnexus wiki</code>, which is a separate command.
+</div>
+
+<h3>Incremental Updates</h3>
+<pre><code>gitnexus analyze           # incremental (default)
+gitnexus analyze --force   # full rebuild
+gitnexus analyze --embeddings  # also generate/update semantic vectors</code></pre>
+
+<h3>What Gets Created</h3>
+<pre><code>your-project/
+├── src/...
+└── .gitnexus/                  &lt;-- gitignored automatically
+    ├── lbug                    &lt;-- LadybugDB graph database
+    ├── lbug.wal
+    ├── lbug.lock
+    ├── meta.json               &lt;-- index metadata (lastCommit, stats)
+    ├── parse-cache/            &lt;-- content-addressed parse cache shards
+    └── ...</code></pre>
+
+<p>The global registry is created at:</p>
+<pre><code>~/.gitnexus/registry.json       &lt;-- maps repo names to absolute paths</code></pre>
+
+<h2 id="mcp">5. Claude Code MCP Configuration</h2>
+
+<h3>Step 1: Add MCP Server</h3>
+<p>Run one of the following based on your install method:</p>
+
+<pre><code># A. Global install (fastest startup -- recommended)
+claude mcp add gitnexus -- gitnexus mcp
+
+# B. npx fallback (slower cold start)
+claude mcp add gitnexus -- npx -y gitnexus@latest mcp
+
+# C. Project-local install
+claude mcp add gitnexus -- npx gitnexus mcp</code></pre>
+
+<p>Or manually edit <code>~/.claude/settings.json</code>:</p>
+<pre><code>{
+  "mcpServers": {
+    "gitnexus": {
+      "command": "gitnexus",
+      "args": ["mcp"]
+    }
+  }
+}</code></pre>
+
+<h3>Step 2: Restart Claude Code</h3>
+<p>Exit and restart <code>claude</code>. The MCP server starts automatically. You should see in the first message:</p>
+<pre><code>GitNexus: MCP server starting { repoCount: 1, repos: ["your-project"] }</code></pre>
+
+<h3>How MCP Works</h3>
+<p>When Claude Code starts:</p>
+<ol>
+  <li>Spawns <code>gitnexus mcp</code> as a stdio subprocess</li>
+  <li>The subprocess reads <code>~/.gitnexus/registry.json</code> to discover repos</li>
+  <li>Opens LadybugDB connections <strong>lazily</strong> on first query (5-min idle eviction, max 5 concurrent)</li>
+</ol>
+
+<div class="danger">
+  <strong>Do not run <code>gitnexus mcp</code> and <code>gitnexus serve</code> simultaneously</strong> on the same repo. They compete for the LadybugDB file lock (<code>.gitnexus/lbug.lock</code>), which can corrupt the index or cause query failures.
+</div>
+
+<h2 id="skills">6. Installing Agent Skills</h2>
+
+<p>Skills are workflow guides stored under <code>.claude/skills/</code> (global or project-local). They tell Claude Code <em>when</em> and <em>how</em> to use GitNexus tools.</p>
+
+<h3>Standard Skills (4 built-in)</h3>
+<table>
+  <tr><th>Skill</th><th>When to Use</th></tr>
+  <tr><td><code>gitnexus-exploring</code></td><td>Understanding architecture, unfamiliar code, &ldquo;How does X work?&rdquo;</td></tr>
+  <tr><td><code>gitnexus-debugging</code></td><td>Tracing bugs, errors, &ldquo;Why is X failing?&rdquo;</td></tr>
+  <tr><td><code>gitnexus-impact-analysis</code></td><td>Before editing code, &ldquo;What will break?&rdquo;</td></tr>
+  <tr><td><code>gitnexus-refactoring</code></td><td>Rename, extract, split, safe restructuring</td></tr>
+</table>
+
+<h3>Install Globally (All Projects)</h3>
+<pre><code>mkdir -p ~/.claude/skills
+git clone https://github.com/abhigyanpatwari/gitnexus.git /tmp/gitnexus-src
+cp -r /tmp/gitnexus-src/.claude/skills/gitnexus/* ~/.claude/skills/
+rm -rf /tmp/gitnexus-src</code></pre>
+
+<h3>Install Per-Project</h3>
+<pre><code>mkdir -p .claude/skills
+cp -r /path/to/gitnexus-repo/.claude/skills/gitnexus/* .claude/skills/</code></pre>
+
+<h3>Auto-Install via <code>analyze</code></h3>
+<p>Running <code>gitnexus analyze</code> (without <code>--skip-skills</code>) automatically installs standard skills to the project&rsquo;s <code>.claude/skills/</code> and generates repo-specific skills under <code>.claude/skills/generated/</code> if you use <code>--skills</code>.</p>
+
+<h2 id="hooks">7. Optional: Claude Code Hooks</h2>
+
+<p>Hooks provide automated behaviors: session-start context injection and post-commit staleness detection.</p>
+
+<h3>SessionStart Hook</h3>
+<p>Automatically injects GitNexus context when a session starts in an indexed repo.</p>
+
+<p>Edit <code>~/.claude/settings.json</code>:</p>
+<pre><code>{
+  "hooks": {
+    "SessionStart": [
+      {
+        "command": "bash /path/to/gitnexus/hooks/claude/session-start.sh",
+        "description": "Inject GitNexus context on session start"
+      }
+    ]
+  }
+}</code></pre>
+
+<p>The hook script is in the GitNexus repo at <code>gitnexus/hooks/claude/session-start.sh</code>.</p>
+
+<h3>PostToolUse Hook (Staleness Check)</h3>
+<p>After <code>git commit</code> or <code>git merge</code>, prompts the agent to re-index if the codebase has drifted.</p>
+
+<pre><code>{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "command": "node /path/to/gitnexus/hooks/claude/gitnexus-hook.cjs",
+        "description": "GitNexus staleness check after git operations"
+      }
+    ]
+  }
+}</code></pre>
+
+<div class="warn">
+  The hook <strong>does not</strong> run <code>analyze</code> automatically (to avoid blocking the agent for minutes). It only <strong>notifies</strong> the agent, which then asks you if you want to re-index.
+</div>
+
+<h2 id="verify">8. Verification</h2>
+
+<h3>Check MCP Tools</h3>
+<p>In Claude Code, run:</p>
+<pre><code>/list-mcp-tools</code></pre>
+<p>You should see 16 tools including <code>gitnexus_query</code>, <code>gitnexus_context</code>, <code>gitnexus_impact</code>, <code>gitnexus_detect_changes</code>, <code>gitnexus_rename</code>.</p>
+
+<h3>Check Index Status</h3>
+<pre><code>gitnexus status</code></pre>
+
+<h3>Test a Query</h3>
+<pre><code>gitnexus query "authentication flow"</code></pre>
+
+<h3>Check Resources</h3>
+<p>In Claude Code:</p>
+<pre><code>READ gitnexus://repo/your-project/context</code></pre>
+
+<h2 id="usage">9. Daily Usage Workflow</h2>
+
+<h3>Before Editing Code</h3>
+<pre><code># 1. Impact analysis (MANDATORY)
+gitnexus impact "MyFunction" --direction upstream
+
+# Or via Claude Code MCP:
+gitnexus_impact({target: "MyFunction", direction: "upstream"})</code></pre>
+
+<h3>Before Committing</h3>
+<pre><code># 2. Detect changes
+gitnexus detect-changes --scope staged
+
+# Or via MCP:
+gitnexus_detect_changes({scope: "staged"})</code></pre>
+
+<h3>Safe Rename</h3>
+<pre><code># 3. Dry-run first
+gitnexus rename "oldName" "newName" --dry-run
+
+# 4. Apply if satisfied
+gitnexus rename "oldName" "newName"</code></pre>
+
+<h3>Keep Index Fresh</h3>
+<pre><code># After major changes
+gitnexus analyze
+
+# Or full rebuild if suspect corruption
+gitnexus analyze --force</code></pre>
+
+<h2 id="docker">10. Docker Deployment (HTTP API Mode)</h2>
+
+<p>For teams or CI environments, you can deploy the <strong>HTTP API</strong> via Docker. <strong>This does not replace MCP</strong>; it provides a backend for the Web UI and third-party HTTP clients.</p>
+
+<h3>One-Command Setup</h3>
+<pre><code>git clone https://github.com/abhigyanpatwari/gitnexus.git
+cd gitnexus
+docker compose up -d</code></pre>
+
+<p>This starts:</p>
+<ul>
+  <li><strong>Server</strong> on <code>http://localhost:4747</code> (HTTP API + indexer)</li>
+  <li><strong>Web UI</strong> on <code>http://localhost:4173</code></li>
+</ul>
+
+<h3>Indexing inside the Container</h3>
+<pre><code># Mount your host workspace
+WORKSPACE_DIR=$HOME/code docker compose up -d
+
+# Register an already-indexed repo (read-only mount)
+docker compose exec gitnexus-server gitnexus index /workspace/my-repo
+
+# Or clone and index inside the container
+docker compose exec gitnexus-server bash
+git clone https://github.com/org/repo /data/gitnexus/repo
+cd /data/gitnexus/repo &amp;&amp; gitnexus analyze &amp;&amp; gitnexus index .</code></pre>
+
+<h3>Docker Key Facts</h3>
+<table>
+  <tr><th>Item</th><th>Value</th></tr>
+  <tr><td>Images</td><td><code>ghcr.io/abhigyanpatwari/gitnexus:latest</code> (server), <code>ghcr.io/abhigyanpatwari/gitnexus-web:latest</code> (UI)</td></tr>
+  <tr><td>Named volume</td><td><code>gitnexus-data</code> persists registry + cloned repos at <code>/data/gitnexus</code></td></tr>
+  <tr><td>Workspace mount</td><td><code>/workspace:ro</code> (read-only) — only for registering pre-built indexes</td></tr>
+  <tr><td>Env</td><td><code>GITNEXUS_HOME=/data/gitnexus</code> moves the global registry inside the container</td></tr>
+  <tr><td>Signature</td><td>Images are Cosign-signed; verify before production use</td></tr>
+</table>
+
+<div class="warn">
+  <strong>_stdio MCP is not containerized in the official setup.</strong> The Docker images run <code>gitnexus serve</code> (HTTP), not <code>gitnexus mcp</code> (stdio). If you need MCP in a container, you must solve path mapping, stdout isolation, and LadybugDB file-locking manually.
+</div>
+
+<h2 id="troubleshoot">11. Troubleshooting</h2>
+
+<table>
+  <tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr>
+  <tr>
+    <td><code>MCP server failed to start</code></td>
+    <td>Cold <code>npx</code> cache timeout</td>
+    <td>Switch to global install: <code>npm i -g gitnexus</code>; update MCP config to use absolute <code>gitnexus</code> path</td>
+  </tr>
+  <tr>
+    <td><code>Index is stale</code></td>
+    <td>Code changed since last <code>analyze</code></td>
+    <td>Run <code>gitnexus analyze</code> in the repo root</td>
+  </tr>
+  <tr>
+    <td><code>Database is locked</code></td>
+    <td><code>gitnexus serve</code> and <code>gitnexus mcp</code> running simultaneously</td>
+    <td>Stop one; only run one server mode at a time per repo</td>
+  </tr>
+  <tr>
+    <td><code>No indexed repos yet</code></td>
+    <td>Registry empty or path mismatch</td>
+    <td>Run <code>gitnexus analyze</code> then <code>gitnexus status</code></td>
+  </tr>
+  <tr>
+    <td>Tree-sitter build fails</td>
+    <td>Missing python3/make/g++</td>
+    <td>Install build tools, or set <code>GITNEXUS_SKIP_OPTIONAL_GRAMMARS=1</code></td>
+  </tr>
+  <tr>
+    <td>Worker parse timeout</td>
+    <td>Very large files or slow disk</td>
+    <td><code>gitnexus analyze --worker-timeout 60</code></td>
+  </tr>
+  <tr>
+    <td>High memory usage</td>
+    <td>Large repo + embeddings</td>
+    <td>Skip embeddings: <code>gitnexus analyze --skip-embeddings</code>; increase Node heap</td>
+  </tr>
+</table>
+
+<h2 id="security">12. Security &amp; Privacy Notes</h2>
+
+<ul>
+  <li><strong>No network calls during indexing.</strong> The entire <code>gitnexus analyze</code> pipeline is local. No source code leaves your machine.</li>
+  <li><strong>Embeddings are local.</strong> Uses HuggingFace <code>transformers.js</code> with Snowflake <code>arctic-embed-xs</code> (384D). No API key needed.</li>
+  <li><strong>Global registry stores only paths and metadata.</strong> <code>~/.gitnexus/registry.json</code> contains repo paths, lastCommit hashes, and symbol counts — never source code.</li>
+  <li><strong>Index is stored inside the repo.</strong> <code>.gitnexus/</code> is automatically added to <code>.gitignore</code> and <code>.git/info/exclude</code>. Do not commit it.</li>
+  <li><strong>Only <code>gitnexus wiki</code> calls an LLM API.</strong> This is an explicit opt-in command requiring an API key. All other tools are fully local.</li>
+  <li><strong>Path traversal guards.</strong> All file reads in MCP tools are validated against the registered repo root.</li>
+</ul>
+
+<hr style="border-color:var(--border);margin:48px 0;">
+<p style="color:var(--muted);font-size:13px;">
+  This guide is generated from the GitNexus source and official documentation. For the latest updates, see the project repository.
+</p>
+
+</div>
+</body>
+</html>

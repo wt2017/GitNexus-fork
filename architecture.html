@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Architecture - GitNexus</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --orange: #d29922; --purple: #bc8cff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; padding: 2rem; }
+  .container { max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 2rem; border-bottom: 1px solid var(--border); padding-bottom: .5rem; margin-bottom: 1.5rem; }
+  h2 { font-size: 1.4rem; margin-top: 2rem; margin-bottom: .75rem; color: var(--accent); }
+  h3 { font-size: 1.1rem; margin-top: 1.5rem; margin-bottom: .5rem; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+  th, td { border: 1px solid var(--border); padding: .5rem .75rem; text-align: left; }
+  th { background: var(--surface); color: var(--muted); font-weight: 600; }
+  code { background: var(--surface); padding: .15em .4em; border-radius: 4px; font-size: .85em; }
+  ul, ol { padding-left: 1.5rem; margin: .5rem 0; }
+  li { margin: .25rem 0; }
+  .tag { display: inline-block; background: var(--surface); border: 1px solid var(--border); padding: .1em .6em; border-radius: 12px; font-size: .8em; color: var(--muted); }
+  .module { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin: .75rem 0; }
+  .module h4 { color: var(--green); margin-bottom: .25rem; }
+  .module p { color: var(--muted); font-size: .9rem; }
+  .arch-diagram { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; margin: 1rem 0; font-family: 'SF Mono', SFMono-Regular, Consolas, monospace; font-size: .85rem; color: var(--muted); white-space: pre; overflow-x: auto; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Architecture: GitNexus</h1>
+
+<h2>Overview</h2>
+<p>GitNexus is a graph-powered code intelligence platform that indexes any codebase into a queryable knowledge graph and exposes it to AI agents via MCP (Model Context Protocol) and a web-based visual explorer. It parses source code using tree-sitter, builds a property graph of symbols and relationships, detects communities and execution processes, and optionally generates semantic embeddings for natural-language search.</p>
+<p>The project is organized as a monorepo with a Node.js CLI / server package, a React web UI, shared TypeScript definitions, and IDE plugin integrations for Claude and Cursor.</p>
+
+<h2>Tech Stack</h2>
+<table>
+  <tr><th>Category</th><th>Choice</th></tr>
+  <tr><td>Language</td><td>TypeScript 5.4+</td></tr>
+  <tr><td>Runtime</td><td>Node.js 22+ (bookworm-slim base image)</td></tr>
+  <tr><td>CLI Framework</td><td>Commander.js</td></tr>
+  <tr><td>HTTP Server</td><td>Express.js 4.x with CORS, rate-limiting</td></tr>
+  <tr><td>Frontend</td><td>React 19, Vite 8, Tailwind CSS 4</td></tr>
+  <tr><td>Graph DB</td><td>LadybugDB (embedded, successor to KuzuDB)</td></tr>
+  <tr><td>Graph Visualization</td><td>Sigma.js 3, Graphology, D3</td></tr>
+  <tr><td>Code Parsing</td><td>tree-sitter (12+ language grammars)</td></tr>
+  <tr><td>Embeddings</td><td>ONNX Runtime Node + Hugging Face Transformers (local, no cloud dependency)</td></tr>
+  <tr><td>AI Integration</td><td>MCP SDK, LangChain, LangGraph</td></tr>
+  <tr><td>Testing</td><td>Vitest, Playwright, @testing-library/react</td></tr>
+  <tr><td>Container</td><td>Docker, Docker Compose</td></tr>
+</table>
+
+<h2>System Architecture</h2>
+<p>GitNexus follows a <strong>CLI-first, server-optional</strong> architecture. The core engine runs as a local Node.js CLI that can also start an HTTP server. The server hosts both a REST API for the web UI and an MCP-over-HTTP endpoint for remote AI tools. A separate web container serves the static React SPA.</p>
+
+<div class="arch-diagram">
++-------------------------------------------------------------+
+|                        User Interfaces                       |
+|  +----------------+  +----------------+  +----------------+ |
+|  |  Terminal/CLI  |  |   Web Browser  |  |  AI Agents     | |
+|  |  (gitnexus)    |  | (gitnexus-web) |  | (Cursor/Claude)| |
+|  +--------+-------+  +--------+-------+  +--------+-------+ |
+|           |                   |                   |         |
++-----------|-------------------|-------------------|---------+
+            |                   |                   |
+            | stdout/stdin      | HTTP/SSE          | MCP stdio
+            |                   |                   | or HTTP
++-----------|-------------------|-------------------|---------+
+|           v                   v                   v         |
+|  +----------------+  +----------------+  +----------------+ |
+|  |   CLI Parser   |  |  Express API   |  |  MCP Server    | |
+|  |  (commander)   |  |  (server/)     |  |  (mcp/)        | |
+|  +--------+-------+  +--------+-------+  +--------+-------+ |
+|           |                   |                   |         |
+|           +-------------------+-------------------+         |
+|                               |                             |
+|                    +----------v----------+                  |
+|                    |   LocalBackend      |                  |
+|                    |   (multi-repo)      |                  |
+|                    +----------+----------+                  |
+|                               |                             |
+|                    +----------v----------+                  |
+|                    |   LadybugDB (.lbug) |                  |
+|                    |   Knowledge Graph   |                  |
+|                    +----------+----------+                  |
+|                               |                             |
+|         +---------------------+---------------------+       |
+|         |                     |                     |       |
+|  +------v------+      +-------v-------+    +-------v------+|
+|  | Ingestion   |      |    Search     |    | Embeddings   ||
+|  | Pipeline    |      | (BM25/Hybrid) |    | (ONNX/local) ||
+|  +-------------+      +---------------+    +--------------+|
+|                                                             |
++-------------------------------------------------------------+
+</div>
+
+<h2>Data Flow</h2>
+<ol>
+  <li><strong>Ingestion</strong>: The user runs <code>gitnexus analyze &lt;path&gt;</code> (or via the web UI). The ingestion pipeline walks the filesystem, parses each source file with tree-sitter, extracts symbols (functions, classes, variables, imports), resolves references, and writes nodes and relationships into LadybugDB.</li>
+  <li><strong>Community &amp; Process Detection</strong>: After symbol extraction, the pipeline runs community detection (Leiden) to group related symbols into functional areas, and process detection to identify execution flows (e.g., request handlers, middleware chains).</li>
+  <li><strong>Indexing</strong>: Metadata (<code>meta.json</code>) and the registry (<code>~/.gitnexus/registry.json</code>) are updated so the MCP server and HTTP API can discover the repo.</li>
+  <li><strong>Querying</strong>: AI agents issue MCP tool calls (<code>query</code>, <code>context</code>, <code>impact</code>, <code>detect_changes</code>) or the web UI calls REST endpoints (<code>/api/graph</code>, <code>/api/search</code>, <code>/api/file</code>). The LocalBackend translates these into Cypher queries against LadybugDB.</li>
+  <li><strong>Embeddings (optional)</strong>: When <code>--embeddings</code> is enabled, the embedding pipeline generates vector representations of symbol content using a local ONNX model and stores them in LadybugDB for semantic search.</li>
+</ol>
+
+<h2>Key Modules</h2>
+
+<div class="module">
+  <h4>CLI Layer</h4>
+  <p><strong>Purpose:</strong> Parses user commands and dispatches to lazy-loaded action handlers. Supports analyze, serve, mcp, query, context, impact, wiki, and maintenance commands.</p>
+  <p><strong>Entry point:</strong> <code>gitnexus/src/cli/index.ts</code></p>
+  <p><strong>Key files:</strong> <code>cli/index.ts</code>, <code>cli/analyze.ts</code>, <code>cli/serve.ts</code>, <code>cli/mcp.ts</code>, <code>cli/tool.ts</code>, <code>cli/lazy-action.ts</code></p>
+</div>
+
+<div class="module">
+  <h4>Ingestion Pipeline</h4>
+  <p><strong>Purpose:</strong> Core static analysis engine. Parses source files into ASTs, extracts symbols and relationships, resolves imports/calls, detects communities and processes, and writes the graph to LadybugDB. Supports incremental indexing via content-hash diffing.</p>
+  <p><strong>Entry point:</strong> <code>gitnexus/src/core/ingestion/pipeline.ts</code></p>
+  <p><strong>Key files:</strong> <code>core/ingestion/pipeline.ts</code>, <code>core/ingestion/parsing-processor.ts</code>, <code>core/ingestion/community-processor.ts</code>, <code>core/ingestion/process-processor.ts</code>, <code>core/ingestion/import-processor.ts</code>, <code>core/ingestion/call-processor.ts</code>, <code>core/ingestion/workers/</code></p>
+</div>
+
+<div class="module">
+  <h4>LadybugDB Adapter</h4>
+  <p><strong>Purpose:</strong> Abstracts all graph database operations: connection pooling, Cypher execution, schema initialization, WAL flushing, and incremental node deletion. Replaced KuzuDB in earlier versions.</p>
+  <p><strong>Entry point:</strong> <code>gitnexus/src/core/lbug/lbug-adapter.ts</code></p>
+  <p><strong>Key files:</strong> <code>core/lbug/lbug-adapter.ts</code>, <code>core/lbug/pool-adapter.ts</code>, <code>core/lbug/schema.ts</code>, <code>core/lbug/lbug-config.ts</code></p>
+</div>
+
+<div class="module">
+  <h4>Storage &amp; Repo Manager</h4>
+  <p><strong>Purpose:</strong> Manages on-disk storage for indexes (<code>.gitnexus/</code>), the global registry (<code>~/.gitnexus/registry.json</code>), parse caches, file hashes for incremental updates, and git integration.</p>
+  <p><strong>Entry point:</strong> <code>gitnexus/src/storage/repo-manager.ts</code></p>
+  <p><strong>Key files:</strong> <code>storage/repo-manager.ts</code>, <code>storage/git.ts</code>, <code>storage/parse-cache.ts</code>, <code>storage/file-hash.ts</code></p>
+</div>
+
+<div class="module">
+  <h4>Search &amp; Embeddings</h4>
+  <p><strong>Purpose:</strong> Provides keyword search (BM25/FTS), semantic search (cosine similarity on ONNX embeddings), and hybrid ranking. The embedding pipeline runs locally without cloud dependencies.</p>
+  <p><strong>Entry point:</strong> <code>gitnexus/src/core/search/hybrid-search.ts</code></p>
+  <p><strong>Key files:</strong> <code>core/search/hybrid-search.ts</code>, <code>core/search/bm25-index.ts</code>, <code>core/embeddings/embedder.ts</code>, <code>core/embeddings/embedding-pipeline.ts</code>, <code>core/embeddings/exact-search.ts</code></p>
+</div>
+
+<div class="module">
+  <h4>MCP Server</h4>
+  <p><strong>Purpose:</strong> Implements the Model Context Protocol for AI agent integration. Exposes tools (query, context, impact, detect_changes, cypher, rename), resources (repo context, clusters, processes, schema), and prompts (detect_impact, generate_map). Runs over stdio or StreamableHTTP.</p>
+  <p><strong>Entry point:</strong> <code>gitnexus/src/mcp/server.ts</code></p>
+  <p><strong>Key files:</strong> <code>mcp/server.ts</code>, <code>mcp/tools.ts</code>, <code>mcp/resources.ts</code>, <code>mcp/local/local-backend.ts</code>, <code>mcp/compatible-stdio-transport.ts</code></p>
+</div>
+
+<div class="module">
+  <h4>HTTP API Server</h4>
+  <p><strong>Purpose:</strong> Express-based REST API serving the web UI and external clients. Endpoints include graph streaming (NDJSON), search, file reading, grep, process/cluster queries, analysis job management (with SSE progress), and embedding jobs. Serves the built web UI as a static SPA.</p>
+  <p><strong>Entry point:</strong> <code>gitnexus/src/server/api.ts</code></p>
+  <p><strong>Key files:</strong> <code>server/api.ts</code>, <code>server/analyze-job.ts</code>, <code>server/analyze-worker.ts</code>, <code>server/git-clone.ts</code>, <code>server/mcp-http.ts</code>, <code>server/validation.ts</code></p>
+</div>
+
+<div class="module">
+  <h4>Web UI</h4>
+  <p><strong>Purpose:</strong> React 19 SPA for visual exploration of the knowledge graph. Features: interactive Sigma.js graph canvas, file tree panel, code/chat side panel, LLM agent chat, settings, and repo onboarding (drag-drop or server connect). Connects to the HTTP API.</p>
+  <p><strong>Entry point:</strong> <code>gitnexus-web/src/main.tsx</code></p>
+  <p><strong>Key files:</strong> <code>gitnexus-web/src/App.tsx</code>, <code>gitnexus-web/src/components/GraphCanvas.tsx</code>, <code>gitnexus-web/src/services/backend-client.ts</code>, <code>gitnexus-web/src/hooks/useAppState.tsx</code>, <code>gitnexus-web/src/core/graph/graph.ts</code>, <code>gitnexus-web/src/core/llm/agent.ts</code></p>
+</div>
+
+<div class="module">
+  <h4>Shared Types</h4>
+  <p><strong>Purpose:</strong> Shared TypeScript type definitions used by both the CLI and web UI packages to ensure contract consistency across the monorepo.</p>
+  <p><strong>Entry point:</strong> <code>gitnexus-shared/src/index.ts</code></p>
+  <p><strong>Key files:</strong> <code>gitnexus-shared/src/index.ts</code>, <code>gitnexus-shared/src/graph/</code>, <code>gitnexus-shared/src/integrations/</code>, <code>gitnexus-shared/src/test-helpers.ts</code></p>
+</div>
+
+<h2>External Dependencies</h2>
+<ul>
+  <li><strong>Git</strong> — Required for repo cloning, commit detection, staleness checks, and diff parsing.</li>
+  <li><strong>LadybugDB</strong> — Embedded graph database (via <code>@ladybugdb/core</code> npm package). No external DB server needed.</li>
+  <li><strong>Hugging Face Transformers</strong> — Local embedding model download and inference (ONNX-based).</li>
+  <li><strong>LLM APIs (optional)</strong> — OpenAI, OpenRouter, Azure, Cursor for wiki generation and agent chat in the web UI.</li>
+  <li><strong>GitHub (optional)</strong> — For publishing wiki gists and the understand-quickly registry integration.</li>
+</ul>
+
+<h2>Configuration</h2>
+<p>Key configuration files and environment variables:</p>
+<ul>
+  <li><code>~/.gitnexus/config.json</code> — Global CLI config (API keys, model preferences). Written with 0o600 permissions.</li>
+  <li><code>~/.gitnexus/registry.json</code> — Global repo registry mapping names to indexed repo paths.</li>
+  <li><code>.env.example</code> — Docker Compose environment variables:
+    <ul>
+      <li><code>SERVER_IMAGE</code> / <code>WEB_IMAGE</code> — Container image references</li>
+      <li><code>SERVER_HOST_PORT</code> (default 4747) / <code>WEB_HOST_PORT</code> (default 4173)</li>
+      <li><code>WORKSPACE_DIR</code> — Optional read-only mount for repos to index</li>
+    </ul>
+  </li>
+  <li>CLI environment variables: <code>GITNEXUS_HOME</code>, <code>GITNEXUS_NO_GITIGNORE</code>, <code>GITNEXUS_MAX_FILE_SIZE</code>, <code>GITNEXUS_EMBEDDING_THREADS</code>, etc.</li>
+</ul>
+
+<h2>Monorepo Structure</h2>
+<table>
+  <tr><th>Package</th><th>Path</th><th>Role</th></tr>
+  <tr><td>gitnexus</td><td><code>gitnexus/</code></td><td>CLI, HTTP server, MCP server, ingestion pipeline</td></tr>
+  <tr><td>gitnexus-web</td><td><code>gitnexus-web/</code></td><td>React SPA for graph visualization and agent chat</td></tr>
+  <tr><td>gitnexus-shared</td><td><code>gitnexus-shared/</code></td><td>Shared TypeScript types and test helpers</td></tr>
+  <tr><td>gitnexus-claude-plugin</td><td><code>gitnexus-claude-plugin/</code></td><td>Claude Code plugin integration</td></tr>
+  <tr><td>gitnexus-cursor-integration</td><td><code>gitnexus-cursor-integration/</code></td><td>Cursor IDE integration</td></tr>
+  <tr><td>gitnexus-test-setup</td><td><code>gitnexus-test-setup/</code></td><td>Shared test utilities</td></tr>
+</table>
+
+</div>
+</body>
+</html>
