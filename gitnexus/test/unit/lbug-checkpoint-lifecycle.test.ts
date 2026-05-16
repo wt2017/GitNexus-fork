@@ -138,6 +138,63 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
     await adapter.closeLbug();
   });
 
+  it('does not remove sidecars when main db file is present', async () => {
+    vi.resetModules();
+
+    const dbPath = '/tmp/gitnexus-lbug-present/lbug';
+    const queryResult = { getAll: vi.fn(async () => []), close: vi.fn() };
+    const conn = {
+      query: vi.fn(async () => queryResult),
+      close: vi.fn(async () => {}),
+    };
+    const db = { close: vi.fn(async () => {}) };
+    const accessMock = vi.fn(async () => {});
+    const unlinkMock = vi.fn(async () => {});
+
+    vi.doMock('fs/promises', () => ({
+      default: {
+        lstat: vi.fn(async () => {
+          throw new Error('ENOENT');
+        }),
+        access: accessMock,
+        unlink: unlinkMock,
+        mkdir: vi.fn(async () => {}),
+      },
+    }));
+    vi.doMock('../../src/core/lbug/lbug-config.js', () => ({
+      openLbugConnection: vi.fn(async () => ({ db, conn })),
+      closeLbugConnection: vi.fn(async () => {}),
+      isDbBusyError: vi.fn((err: unknown) => String(err).toLowerCase().includes('lock')),
+      isOpenRetryExhausted: vi.fn(() => false),
+      waitForWindowsHandleRelease: vi.fn(async () => true),
+    }));
+    vi.doMock('../../src/core/lbug/extension-loader.js', () => ({
+      extensionManager: {
+        ensure: vi.fn(async () => true),
+        getCapabilities: vi.fn(() => []),
+        reset: vi.fn(),
+      },
+    }));
+    const warnMock = vi.fn();
+    vi.doMock('../../src/core/logger.js', () => ({
+      logger: {
+        warn: warnMock,
+        info: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+      },
+    }));
+
+    const adapter = await import('../../src/core/lbug/lbug-adapter.js');
+    await adapter.initLbug(dbPath);
+
+    expect(accessMock).toHaveBeenCalledWith(dbPath);
+    expect(unlinkMock).not.toHaveBeenCalled();
+    expect(warnMock).not.toHaveBeenCalled();
+
+    await adapter.closeLbug();
+  });
+
   it('drains and closes CHECKPOINT result before closing connection and database handles', async () => {
     vi.resetModules();
 
