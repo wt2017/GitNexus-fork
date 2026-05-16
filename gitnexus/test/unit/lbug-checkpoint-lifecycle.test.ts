@@ -143,7 +143,10 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
 
     expect(accessMock).toHaveBeenCalledWith(dbPath);
     expect(unlinkMock).not.toHaveBeenCalled();
-    expect(warnMock).not.toHaveBeenCalled();
+    expect(warnMock).toHaveBeenCalledTimes(1);
+    expect(warnMock.mock.calls[0]?.[0]).toContain(
+      'GitNexus: unable to verify main DB file before orphan sidecar cleanup (EACCES); skipping cleanup:',
+    );
 
     await adapter.closeLbug();
   });
@@ -207,6 +210,58 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
     expect(warnMock).not.toHaveBeenCalled();
 
     await adapter.closeLbug();
+  });
+
+  it('throws when db path lstat fails with non-ENOENT errors', async () => {
+    vi.resetModules();
+
+    const dbPath = '/tmp/gitnexus-lbug-lstat-eperm/lbug';
+    const EPERM_ERROR = makeErrnoError(
+      'EPERM',
+      `EPERM: operation not permitted, lstat '${dbPath}'`,
+    );
+    const accessMock = vi.fn(async () => {});
+    const unlinkMock = vi.fn(async () => {});
+
+    vi.doMock('fs/promises', () => ({
+      default: {
+        lstat: vi.fn(async () => {
+          throw EPERM_ERROR;
+        }),
+        access: accessMock,
+        unlink: unlinkMock,
+        mkdir: vi.fn(async () => {}),
+      },
+    }));
+    vi.doMock('../../src/core/lbug/lbug-config.js', () => ({
+      openLbugConnection: vi.fn(async () => {
+        throw new Error('should not be called');
+      }),
+      closeLbugConnection: vi.fn(async () => {}),
+      isDbBusyError: vi.fn((err: unknown) => String(err).toLowerCase().includes('lock')),
+      isOpenRetryExhausted: vi.fn(() => false),
+      waitForWindowsHandleRelease: vi.fn(async () => true),
+    }));
+    vi.doMock('../../src/core/lbug/extension-loader.js', () => ({
+      extensionManager: {
+        ensure: vi.fn(async () => true),
+        getCapabilities: vi.fn(() => []),
+        reset: vi.fn(),
+      },
+    }));
+    vi.doMock('../../src/core/logger.js', () => ({
+      logger: {
+        warn: vi.fn(),
+        info: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+      },
+    }));
+
+    const adapter = await import('../../src/core/lbug/lbug-adapter.js');
+    await expect(adapter.initLbug(dbPath)).rejects.toThrow(/operation not permitted/i);
+    expect(accessMock).not.toHaveBeenCalled();
+    expect(unlinkMock).not.toHaveBeenCalled();
   });
 
   it('handles partial orphan sidecar state and removes only present sidecars', async () => {
@@ -341,7 +396,13 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
     await adapter.initLbug(dbPath);
 
     expect(unlinkMock).toHaveBeenCalledTimes(2);
-    expect(warnMock).not.toHaveBeenCalled();
+    expect(warnMock).toHaveBeenCalledTimes(2);
+    expect(warnMock.mock.calls[0]?.[0]).toContain(
+      'GitNexus: failed to remove orphan sidecar lbug.shadow (EPERM) while main DB file is missing; LadybugDB open may still fail:',
+    );
+    expect(warnMock.mock.calls[1]?.[0]).toContain(
+      'GitNexus: failed to remove orphan sidecar lbug.wal.checkpoint (EPERM) while main DB file is missing; LadybugDB open may still fail:',
+    );
     expect(openLbugConnectionMock).toHaveBeenCalledWith(expect.anything(), dbPath);
 
     await adapter.closeLbug();

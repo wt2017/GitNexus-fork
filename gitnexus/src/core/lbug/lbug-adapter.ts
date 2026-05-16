@@ -206,6 +206,11 @@ const isMissingFileError = (err: unknown): boolean => {
   return errno?.code === 'ENOENT';
 };
 
+const getErrnoCode = (err: unknown): string | undefined => {
+  const errno = err as NodeJS.ErrnoException;
+  return errno?.code;
+};
+
 const runWithSessionLock = async <T>(operation: () => Promise<T>): Promise<T> => {
   const previous = sessionLock;
   let release: (() => void) | null = null;
@@ -369,7 +374,10 @@ const doInitLbug = async (dbPath: string) => {
       await fs.rm(dbPath, { recursive: true, force: true });
     }
     // If it's a file, assume it's an existing LadybugDB database - LadybugDB will open it
-  } catch {
+  } catch (err) {
+    if (!isMissingFileError(err)) {
+      throw err;
+    }
     // Path doesn't exist, which is what LadybugDB wants for a new database
   }
 
@@ -388,10 +396,23 @@ const doInitLbug = async (dbPath: string) => {
           logger.warn(
             `GitNexus: removed orphan sidecar ${path.basename(sidecar)} (no main DB file present)`,
           );
-        } catch {
-          // Sidecar absent — nothing to clean.
+        } catch (err) {
+          if (isMissingFileError(err)) {
+            continue;
+          }
+          const code = getErrnoCode(err);
+          const errSummary = err instanceof Error ? err.message : String(err);
+          logger.warn(
+            `GitNexus: failed to remove orphan sidecar ${path.basename(sidecar)} (${code ?? 'UNKNOWN'}) while main DB file is missing; LadybugDB open may still fail: ${errSummary.slice(0, 160)}`,
+          );
         }
       }
+    } else {
+      const code = getErrnoCode(err);
+      const errSummary = err instanceof Error ? err.message : String(err);
+      logger.warn(
+        `GitNexus: unable to verify main DB file before orphan sidecar cleanup (${code ?? 'UNKNOWN'}); skipping cleanup: ${errSummary.slice(0, 160)}`,
+      );
     }
   }
 
