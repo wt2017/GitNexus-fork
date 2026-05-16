@@ -14,7 +14,10 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
     vi.resetModules();
 
     const dbPath = '/tmp/gitnexus-lbug-orphan-sidecar/lbug';
-    const ENOENT_ERROR = new Error('ENOENT');
+    const ENOENT_ERROR = Object.assign(
+      new Error(`ENOENT: no such file or directory, access '${dbPath}'`),
+      { code: 'ENOENT' as const },
+    );
     const queryResult = { getAll: vi.fn(async () => []), close: vi.fn() };
     const conn = {
       query: vi.fn(async () => queryResult),
