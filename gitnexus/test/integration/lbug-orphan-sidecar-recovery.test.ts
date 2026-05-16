@@ -91,25 +91,22 @@ describe('orphan sidecar recovery — native integration', () => {
     },
   );
 
-  itLbugReopen(
-    'initLbug succeeds on a clean path with no orphan sidecars (baseline)',
-    async () => {
-      const tmp = await createTempDir('gitnexus-lbug-orphan-');
-      const dbPath = path.join(tmp.dbPath, 'lbug');
+  itLbugReopen('initLbug succeeds on a clean path with no orphan sidecars (baseline)', async () => {
+    const tmp = await createTempDir('gitnexus-lbug-orphan-');
+    const dbPath = path.join(tmp.dbPath, 'lbug');
 
-      try {
-        const adapter = await import('../../src/core/lbug/lbug-adapter.js');
-        await adapter.initLbug(dbPath);
+    try {
+      const adapter = await import('../../src/core/lbug/lbug-adapter.js');
+      await adapter.initLbug(dbPath);
 
-        const rows = await adapter.executeQuery('RETURN 1 AS ok');
-        expect(rows).toEqual([{ ok: 1 }]);
+      const rows = await adapter.executeQuery('RETURN 1 AS ok');
+      expect(rows).toEqual([{ ok: 1 }]);
 
-        await adapter.closeLbug();
-      } finally {
-        await tmp.cleanup();
-      }
-    },
-  );
+      await adapter.closeLbug();
+    } finally {
+      await tmp.cleanup();
+    }
+  });
 
   itLbugReopen(
     'initLbug does not attempt orphan cleanup when the main DB file exists',
@@ -145,7 +142,9 @@ describe('orphan sidecar recovery — native integration', () => {
         await adapter.closeLbug();
       } finally {
         // Clean up marker file — best-effort; may already be absent
-        await fs.unlink(markerPath).catch(() => { /* test cleanup only */ });
+        await fs.unlink(markerPath).catch(() => {
+          /* test cleanup only */
+        });
         await tmp.cleanup();
       }
     },
