@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+const makeErrnoError = <TCode extends string>(code: TCode, message: string) =>
+  Object.assign(new Error(message), { code });
+
 describe('lbug adapter CHECKPOINT lifecycle', () => {
   afterEach(() => {
     vi.doUnmock('fs/promises');
@@ -14,9 +17,9 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
     vi.resetModules();
 
     const dbPath = '/tmp/gitnexus-lbug-orphan-sidecar/lbug';
-    const ENOENT_ERROR = Object.assign(
-      new Error(`ENOENT: no such file or directory, access '${dbPath}'`),
-      { code: 'ENOENT' as const },
+    const ENOENT_ERROR = makeErrnoError(
+      'ENOENT',
+      `ENOENT: no such file or directory, access '${dbPath}'`,
     );
     const queryResult = { getAll: vi.fn(async () => []), close: vi.fn() };
     const conn = {
@@ -85,7 +88,11 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
     vi.resetModules();
 
     const dbPath = '/tmp/gitnexus-lbug-orphan-sidecar-eacces/lbug';
-    const EACCES_ERROR = Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
+    const ENOENT_ERROR = makeErrnoError(
+      'ENOENT',
+      `ENOENT: no such file or directory, access '${dbPath}'`,
+    );
+    const EACCES_ERROR = makeErrnoError('EACCES', `EACCES: permission denied, access '${dbPath}'`);
     const queryResult = { getAll: vi.fn(async () => []), close: vi.fn() };
     const conn = {
       query: vi.fn(async () => queryResult),
@@ -100,7 +107,7 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
     vi.doMock('fs/promises', () => ({
       default: {
         lstat: vi.fn(async () => {
-          throw new Error('ENOENT');
+          throw ENOENT_ERROR;
         }),
         access: accessMock,
         unlink: unlinkMock,
@@ -145,6 +152,10 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
     vi.resetModules();
 
     const dbPath = '/tmp/gitnexus-lbug-present/lbug';
+    const ENOENT_ERROR = makeErrnoError(
+      'ENOENT',
+      `ENOENT: no such file or directory, access '${dbPath}'`,
+    );
     const queryResult = { getAll: vi.fn(async () => []), close: vi.fn() };
     const conn = {
       query: vi.fn(async () => queryResult),
@@ -157,7 +168,7 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
     vi.doMock('fs/promises', () => ({
       default: {
         lstat: vi.fn(async () => {
-          throw new Error('ENOENT');
+          throw ENOENT_ERROR;
         }),
         access: accessMock,
         unlink: unlinkMock,
@@ -202,9 +213,9 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
     vi.resetModules();
 
     const dbPath = '/tmp/gitnexus-lbug-partial-sidecar/lbug';
-    const ENOENT_ERROR = Object.assign(
-      new Error(`ENOENT: no such file or directory, access '${dbPath}'`),
-      { code: 'ENOENT' as const },
+    const ENOENT_ERROR = makeErrnoError(
+      'ENOENT',
+      `ENOENT: no such file or directory, access '${dbPath}'`,
     );
     const queryResult = { getAll: vi.fn(async () => []), close: vi.fn() };
     const conn = {
@@ -270,13 +281,14 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
     vi.resetModules();
 
     const dbPath = '/tmp/gitnexus-lbug-sidecar-unlink-fail/lbug';
-    const ENOENT_ERROR = Object.assign(
-      new Error(`ENOENT: no such file or directory, access '${dbPath}'`),
-      { code: 'ENOENT' as const },
+    const ENOENT_ERROR = makeErrnoError(
+      'ENOENT',
+      `ENOENT: no such file or directory, access '${dbPath}'`,
     );
-    const EPERM_ERROR = Object.assign(new Error('EPERM: operation not permitted'), {
-      code: 'EPERM' as const,
-    });
+    const EPERM_ERROR = makeErrnoError(
+      'EPERM',
+      `EPERM: operation not permitted, unlink '${dbPath}.shadow'`,
+    );
     const queryResult = { getAll: vi.fn(async () => []), close: vi.fn() };
     const conn = {
       query: vi.fn(async () => queryResult),
@@ -287,9 +299,7 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
       throw ENOENT_ERROR;
     });
     const unlinkMock = vi.fn(async () => {
-      throw Object.assign(new Error(`EPERM: operation not permitted, unlink '${dbPath}.shadow'`), {
-        code: EPERM_ERROR.code,
-      });
+      throw EPERM_ERROR;
     });
 
     vi.doMock('fs/promises', () => ({
