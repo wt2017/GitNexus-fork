@@ -144,8 +144,8 @@ describe('orphan sidecar recovery — native integration', () => {
 
         await adapter.closeLbug();
       } finally {
-        // Clean up marker file best-effort
-        await fs.unlink(markerPath).catch(() => {});
+        // Clean up marker file — best-effort; may already be absent
+        await fs.unlink(markerPath).catch(() => { /* test cleanup only */ });
         await tmp.cleanup();
       }
     },
