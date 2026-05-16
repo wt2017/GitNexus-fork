@@ -85,7 +85,7 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
     vi.resetModules();
 
     const dbPath = '/tmp/gitnexus-lbug-orphan-sidecar-eacces/lbug';
-    const eaccesError = Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
+    const EACCES_ERROR = Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
     const queryResult = { getAll: vi.fn(async () => []), close: vi.fn() };
     const conn = {
       query: vi.fn(async () => queryResult),
@@ -93,7 +93,7 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
     };
     const db = { close: vi.fn(async () => {}) };
     const accessMock = vi.fn(async () => {
-      throw eaccesError;
+      throw EACCES_ERROR;
     });
     const unlinkMock = vi.fn(async () => {});
 
@@ -287,7 +287,9 @@ describe('lbug adapter CHECKPOINT lifecycle', () => {
       throw ENOENT_ERROR;
     });
     const unlinkMock = vi.fn(async () => {
-      throw EPERM_ERROR;
+      throw Object.assign(new Error(`EPERM: operation not permitted, unlink '${dbPath}.shadow'`), {
+        code: EPERM_ERROR.code,
+      });
     });
 
     vi.doMock('fs/promises', () => ({

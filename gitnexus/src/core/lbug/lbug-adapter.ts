@@ -203,7 +203,7 @@ export const isReadOnlyDbError = (err: unknown): boolean => {
 
 const isMissingFileError = (err: unknown): boolean => {
   const errno = err as NodeJS.ErrnoException;
-  return errno?.code === 'ENOENT' || (err instanceof Error && err.message.includes('ENOENT'));
+  return errno?.code === 'ENOENT';
 };
 
 const runWithSessionLock = async <T>(operation: () => Promise<T>): Promise<T> => {
